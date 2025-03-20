@@ -1,0 +1,65 @@
+{
+    "BuiltIn_AD_Groups": [
+        "Domain Admins",
+        "Enterprise Admins",
+        "Schema Admins",
+        "Pre-Windows 2000 Compatible Access",
+        "Cert Publishers",
+        "RAS and IAS Servers",
+        "Windows Authorization Access Group",
+        "DnsAdmins"
+    ],
+    "Original_Role_Groups": [
+        "RDS Remote Access Servers",
+        "RDS Endpoint Servers",
+        "RDS Management Servers",
+        "Hyper-V Administrators",
+        "Access Control Assistance Operators",
+        "Remote Management Users",
+        "Performance Monitor Users",
+        "Backup Operators",
+        "Account Operators",
+        "Server Operators",
+        "Administrators",
+        "Certificate Service DCOM Access",
+        "Remote Desktop Users",
+        "Event Log Readers",
+        "Print Operators",
+        "Group Policy Creator Owners",
+        "Network Configuration Operators",
+        "Distributed COM Users",
+        "Cryptographic Operators",
+        "Performance Log Users"
+    ],
+    "Exchange_Server_Groups": [
+        "Exchange Organization Management",
+        "Exchange Recipient Management",
+        "Exchange Server Management",
+        "Exchange Trusted Subsystem",
+        "Discovery Management",
+        "Exchange Windows Permissions",
+        "ExchangeLegacyInterop"
+    ],
+    "SharePoint_Groups": [
+        "WSS_WPG",
+        "WSS_ADMIN_WPG",
+        "SharePoint_Shell_Access"
+    ],
+    "Azure_AD_Entra_ID_Groups": [
+        "Global Administrator",
+        "Exchange Online Organization Management",
+        "Exchange Online Recipient Management",
+        "Intune Administrator",
+        "Security Administrator",
+        "Compliance Administrator",
+        "Privileged Role Administrator"
+    ],
+    "Additional_Enterprise_Groups": [
+        "TS Web Access Administrators",
+        "Remote Access Servers",
+        "WinRMRemoteWMIUsers__",
+        "Storage Replica Administrators",
+        "Key Admins",
+        "Enterprise Key Admins"
+    ]
+}

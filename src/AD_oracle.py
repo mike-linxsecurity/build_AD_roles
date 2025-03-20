@@ -47,194 +47,158 @@ Example:
 """
 
 import argparse
+import json
 import logging
 import os
-import sys
 from pathlib import Path
+from typing import Dict, Optional, Union
 
 import pandas as pd
-from dotenv import load_dotenv
 
-from utils.excel_handler import ExcelHandler
-from utils.role_mapper import RoleMapper
-from utils.schema_validator import SchemaValidator
+from .process_input import process_input_file
+from .utils.excel_handler import ExcelHandler
+from .utils.role_mapper import RoleMapper
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+# Configure logging
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+
+# Create a custom formatter that only shows the message
+class UserFriendlyFormatter(logging.Formatter):
+    def format(self, record):
+        if record.levelno == logging.INFO:
+            return record.getMessage()
+        return ""
+
+
+# Configure console handler with custom formatter
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(UserFriendlyFormatter())
+logger.addHandler(console_handler)
+
+
+def setup_logging():
+    """Configure logging with user-friendly formatting."""
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+
+    # Remove any existing handlers
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+
+    # Add console handler with custom formatter
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(UserFriendlyFormatter())
+    logger.addHandler(console_handler)
+
+
+def process_ad_data(
+    input_file: Union[str, Path],
+    output_file: Union[str, Path],
+    builtin_groups_file: Union[str, Path],
+) -> None:
+    """Process AD data and create role mappings.
+
+    Args:
+        input_file: Path to the input Excel file containing AD data
+        output_file: Path where the processed data will be saved
+        builtin_groups_file: Path to the JSON file containing builtin group definitions
+    """
+    setup_logging()
+    logger = logging.getLogger(__name__)
+
+    print(f"Processing input file: {input_file}")
+
+    # Process input file
+    processed_data = process_input_file(input_file)
+
+    # Create role mapper instance
+    role_mapper = RoleMapper(builtin_groups_file)
+
+    # Create role mappings
+    role_mappings = role_mapper.create_role_mappings(processed_data["Groups"])
+
+    # Add role-related sheets to the output
+    processed_data.update(role_mappings)
+
+    # Write output
+    excel_handler = ExcelHandler()
+    excel_handler.write_output(output_file, processed_data)
+
+    # Print summary
+    users_count = len(processed_data["Users"])
+    groups_count = len(processed_data["Groups"])
+    roles_count = len(processed_data.get("Roles", []))
+    role_groups_count = len(processed_data.get("Role_Groups", []))
+
+    print("\n✨ AD Role Mapping Complete!\n")
+    print("📊 Summary:")
+    print(f"  • Users processed: {users_count}")
+    print(f"  • Groups processed: {groups_count}")
+    print(f"  • Roles created: {roles_count}")
+    print(f"  • Role-Group mappings: {role_groups_count}\n")
+    print(f"📁 Output file: {output_file}")
+
 
 def parse_args():
-    """Parse command line arguments.
-    
-    Defines and processes command-line arguments for the AD Role Mapping Tool.
-    Provides help text and validation for required and optional arguments.
-    
-    Returns:
-        argparse.Namespace: Parsed command-line arguments with the following attributes:
-            - input (str): Path to input Excel file
-            - output (str): Path to output Excel file
-            - builtin_groups (str): Path to builtin_groups.json (optional)
-            - log_level (str): Logging level (optional)
-    
-    Example:
-        >>> args = parse_args()
-        >>> print(args.input)
-        'ad_export.xlsx'
-        >>> print(args.log_level)
-        'INFO'
-    
-    Note:
-        - The builtin_groups argument defaults to 'builtin_groups.json' in the script directory
-        - The log_level argument accepts standard Python logging levels
-    """
+    """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="AD Role Mapping Tool",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  Basic usage:
-    %(prog)s --input ad_export.xlsx --output role_mappings.xlsx
-
-  With custom configuration:
-    %(prog)s --input ad_export.xlsx --output role_mappings.xlsx \\
-             --builtin-groups custom_groups.json --log-level DEBUG
-        """
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
+
     parser.add_argument(
         "--input",
+        type=Path,
         required=True,
-        type=str,
-        help="Path to input Excel file containing AD data"
+        help="Path to input Excel file containing AD data",
     )
+
     parser.add_argument(
         "--output",
+        type=Path,
         required=True,
-        type=str,
-        help="Path to output Excel file for role mappings"
+        help="Path to write output Excel file with role mappings",
     )
+
     parser.add_argument(
         "--builtin-groups",
-        type=str,
-        default=str(Path(__file__).parent / "builtin_groups.json"),
-        help="Path to builtin_groups.json configuration file"
+        type=Path,
+        default=Path(__file__).parent / "builtin_groups.json",
+        help="Path to JSON file containing builtin group definitions",
     )
+
     parser.add_argument(
         "--log-level",
-        type=str,
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-        help="Set the logging level"
+        default=os.getenv("LOG_LEVEL", "INFO"),
+        help="Set logging level (default: from LOG_LEVEL env var or INFO)",
     )
+
     return parser.parse_args()
 
 
 def main():
-    """Main entry point for the AD role mapping tool.
-    
-    Orchestrates the complete role mapping process:
-    1. Loads environment variables and parses arguments
-    2. Reads and validates input data
-    3. Creates role mappings from AD groups
-    4. Resolves role inheritance and assignments
-    5. Writes results to output file
-    
-    Returns:
-        int: Exit code (0 for success, 1 for error)
-    
-    Environment Variables:
-        LOG_LEVEL: Logging level to use if not specified in arguments
-    
-    Example:
-        >>> sys.argv = ['AD_oracle.py', '--input', 'ad_export.xlsx',
-        ...            '--output', 'role_mappings.xlsx']
-        >>> exit_code = main()
-        >>> print(exit_code)
-        0
-    
-    Note:
-        - Loads environment variables from .env file if present
-        - Validates all input data before processing
-        - Handles errors gracefully with appropriate logging
-        - Creates all necessary output directories
-    """
-    # Load environment variables
-    load_dotenv()
-
-    # Parse command line arguments
+    """Main entry point."""
     args = parse_args()
 
-    # Set log level from arguments or environment
-    log_level = args.log_level or os.getenv("LOG_LEVEL", "INFO")
-    logging.getLogger().setLevel(log_level)
+    # Configure logging
+    logging.basicConfig(
+        level=args.log_level,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+    logger = logging.getLogger(__name__)
 
     try:
-        # Initialize handlers
-        excel_handler = ExcelHandler(args.input)
-        role_mapper = RoleMapper(args.builtin_groups)
-        validator = SchemaValidator()
+        # Process AD data
+        process_ad_data(args.input, args.output, args.builtin_groups)
 
-        # Read input data
-        logger.info("Reading input Excel file...")
-        sheets = excel_handler.read_sheets()
-
-        # Validate input data
-        logger.info("Validating input data...")
-        for sheet_name, df in sheets.items():
-            errors = validator.validate_dataframe(df, sheet_name)
-            if errors:
-                for error in errors:
-                    logger.error(f"Validation error in {sheet_name}: {error}")
-                sys.exit(1)
-
-        # Validate relationships
-        relationship_errors = validator.validate_relationships(
-            sheets["Users"],
-            sheets["Groups"],
-            sheets["User_Groups"],
-            sheets["Group_Groups"]
-        )
-        if relationship_errors:
-            for error in relationship_errors:
-                logger.error(f"Relationship validation error: {error}")
-            sys.exit(1)
-
-        # Create role mappings
-        logger.info("Creating role mappings...")
-        roles_df = role_mapper.create_role_mappings(sheets["Groups"])
-
-        # Resolve group roles
-        logger.info("Resolving group roles...")
-        group_roles_df = role_mapper.resolve_group_roles(roles_df, sheets["Group_Groups"])
-
-        # Resolve user roles
-        logger.info("Resolving user roles...")
-        user_roles_df = role_mapper.resolve_user_roles(sheets["User_Groups"], group_roles_df)
-
-        # Prepare output
-        output_sheets = {
-            **sheets,  # Include original sheets
-            "Roles": roles_df,
-            "User_Roles": user_roles_df,
-            "Group_Roles": group_roles_df
-        }
-
-        # Write output
-        logger.info("Writing output Excel file...")
-        excel_handler.write_output(args.output, sheets, {
-            "Roles": roles_df,
-            "User_Roles": user_roles_df,
-            "Group_Roles": group_roles_df
-        })
-
-        logger.info("Role mapping completed successfully!")
         return 0
 
     except Exception as e:
-        logger.error(f"Error during role mapping: {e}", exc_info=True)
+        logger.error(f"Error processing AD data: {str(e)}")
         return 1
 
 
 if __name__ == "__main__":
-    sys.exit(main()) 
+    exit(main())

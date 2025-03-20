@@ -13,11 +13,11 @@ The module requires specific sheets to be present in the Excel files:
 - Group_Groups: Contains group hierarchy relationships
 
 Example:
-    handler = ExcelHandler("input.xlsx")
-    sheets = handler.read_sheets()
-    
+    handler = ExcelHandler()
+    sheets = handler.read_sheets("input.xlsx")
+
     # Process the data...
-    
+
     handler.write_output(
         "output.xlsx",
         sheets,
@@ -27,158 +27,104 @@ Example:
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Set, Union
 
 import pandas as pd
-from pandas import DataFrame
 
 logger = logging.getLogger(__name__)
 
-REQUIRED_SHEETS = ["Users", "Groups", "User_Groups", "Group_Groups"]
-
 
 class ExcelHandler:
-    """Handles Excel file operations for AD role mapping.
-    
-    This class provides methods for reading AD data from Excel files,
-    validating the data against schema requirements, and writing processed
-    data back to Excel files.
-    
-    The handler enforces the presence of required sheets and their schema
-    requirements to ensure data consistency. It supports:
-    - Reading multiple sheets from Excel files
-    - Basic schema validation for each sheet
-    - Writing data to new Excel files with additional sheets
-    
-    Attributes:
-        input_file (Path): Path to the input Excel file
-        REQUIRED_SHEETS (List[str]): List of sheets that must be present
-    """
+    """Handle Excel file operations."""
 
-    def __init__(self, input_file: Union[str, Path]):
-        """Initialize ExcelHandler with input file path.
+    def __init__(self):
+        """Initialize ExcelHandler."""
+        self.required_sheets: Set[str] = {"Users", "Groups"}
+
+    def read_sheets(self, input_file: Union[str, Path]) -> Dict[str, pd.DataFrame]:
+        """Read all sheets from an Excel file.
 
         Args:
-            input_file: Path to the input Excel file. Can be either a string path
-                       or a Path object.
-
-        Raises:
-            FileNotFoundError: If the input file doesn't exist
-            
-        Example:
-            >>> handler = ExcelHandler("data/ad_export.xlsx")
-            >>> print(handler.input_file)
-            PosixPath('data/ad_export.xlsx')
-        """
-        self.input_file = Path(input_file)
-        if not self.input_file.exists():
-            raise FileNotFoundError(f"Input file not found: {self.input_file}")
-
-    def read_sheets(self) -> Dict[str, DataFrame]:
-        """Read all required sheets from the Excel file.
-
-        Reads and validates the presence of all required sheets from the input
-        Excel file. The required sheets are defined in REQUIRED_SHEETS.
+            input_file: Path to the Excel file to read
 
         Returns:
-            Dict[str, DataFrame]: Dictionary mapping sheet names to their
-                                corresponding pandas DataFrames.
+            Dict mapping sheet names to DataFrames
 
         Raises:
-            ValueError: If any required sheets are missing from the file
-            pd.errors.EmptyDataError: If the Excel file is empty
-            pd.errors.ParserError: If there are issues parsing the Excel file
-            
-        Example:
-            >>> handler = ExcelHandler("data/ad_export.xlsx")
-            >>> sheets = handler.read_sheets()
-            >>> print(sheets.keys())
-            dict_keys(['Users', 'Groups', 'User_Groups', 'Group_Groups'])
-            >>> print(sheets['Users'].columns)
-            Index(['user_id', 'username', 'email', ...])
-        
-        Note:
-            - Only reads sheets listed in REQUIRED_SHEETS
-            - Ignores any additional sheets in the file
-            - Logs errors before re-raising them
+            FileNotFoundError: If input_file doesn't exist
+            ValueError: If required sheets are missing or empty
         """
-        try:
-            sheets = pd.read_excel(self.input_file, sheet_name=None)
-            missing_sheets = set(REQUIRED_SHEETS) - set(sheets.keys())
-            if missing_sheets:
-                raise ValueError(f"Missing required sheets: {missing_sheets}")
-            return {name: df for name, df in sheets.items() if name in REQUIRED_SHEETS}
-        except Exception as e:
-            logger.error(f"Error reading Excel file: {e}")
-            raise
+        # Ensure input file exists
+        if not Path(input_file).exists():
+            raise FileNotFoundError(f"Input file not found: {input_file}")
+
+        # Read all sheets
+        sheets = pd.read_excel(input_file, sheet_name=None)
+
+        # Check for required sheets
+        missing_sheets = self.required_sheets - set(sheets.keys())
+        if missing_sheets:
+            raise ValueError(f"Missing required sheet(s): {missing_sheets}")
+
+        # Check for empty required sheets
+        for sheet_name in self.required_sheets:
+            if sheets[sheet_name].empty:
+                raise ValueError(f"Required sheet '{sheet_name}' is empty")
+
+        return sheets
 
     def write_output(
         self,
         output_file: Union[str, Path],
-        sheets: Dict[str, DataFrame],
-        additional_sheets: Optional[Dict[str, DataFrame]] = None,
+        sheets: Dict[str, pd.DataFrame],
     ) -> None:
         """Write data to Excel file.
 
-        Writes the processed data to a new Excel file, including both required
-        sheets and any additional sheets (like Roles, User_Roles, etc.).
-
         Args:
             output_file: Path where the output Excel file should be written
-            sheets: Dictionary containing required sheets and their data
-            additional_sheets: Optional dictionary containing additional sheets
-                             to write (e.g., Roles, User_Roles, Group_Roles)
+            sheets: Dictionary containing all sheets to write
 
         Raises:
-            ValueError: If any required sheets are missing from the sheets dict
-            PermissionError: If the output location isn't writable
-            Exception: For other IO or Excel writing errors
-            
-        Example:
-            >>> handler = ExcelHandler("input.xlsx")
-            >>> sheets = handler.read_sheets()
-            >>> # Add Roles sheet
-            >>> roles_df = pd.DataFrame({
-            ...     "role_id": ["R1"],
-            ...     "role_name": ["Admin"]
-            ... })
-            >>> handler.write_output(
-            ...     "output.xlsx",
-            ...     sheets,
-            ...     additional_sheets={"Roles": roles_df}
-            ... )
-        
-        Note:
-            - Creates parent directories if they don't exist
-            - Uses openpyxl engine for Excel writing
-            - Writes sheets without row indices
-            - Logs success or failure of the write operation
+            ValueError: If required sheets are missing or empty
+            PermissionError: If unable to write to output file
         """
         output_file = Path(output_file)
-        missing_sheets = set(REQUIRED_SHEETS) - set(sheets.keys())
+
+        # Ensure output directory exists
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        # Check for required sheets
+        missing_sheets = self.required_sheets - set(sheets.keys())
         if missing_sheets:
-            raise ValueError(f"Missing required sheets: {missing_sheets}")
+            raise ValueError(f"Missing required sheet(s): {missing_sheets}")
+
+        # Define sheet order
+        sheet_order = [
+            "Users",
+            "Groups",
+            "Roles",  # New sheet
+            "User_Groups",
+            "Group_Groups",
+            "Role_Groups",  # New sheet
+            "User_Roles",  # New sheet
+            "Group_Roles",  # New sheet
+        ]
 
         try:
-            # Create parent directories if they don't exist
-            output_file.parent.mkdir(parents=True, exist_ok=True)
-            
             with pd.ExcelWriter(output_file, engine="openpyxl") as writer:
-                # Write required sheets
-                for sheet_name in REQUIRED_SHEETS:
-                    sheets[sheet_name].to_excel(writer, sheet_name=sheet_name, index=False)
+                # Write sheets in order
+                for sheet_name in sheet_order:
+                    if sheet_name in sheets:
+                        sheets[sheet_name].to_excel(
+                            writer, sheet_name=sheet_name, index=False
+                        )
 
-                # Write additional sheets if provided
-                if additional_sheets:
-                    for sheet_name, df in additional_sheets.items():
-                        df.to_excel(writer, sheet_name=sheet_name, index=False)
-
-            logger.info(f"Successfully wrote output to {output_file}")
+        except PermissionError:
+            raise PermissionError(f"Unable to write to output file: {output_file}")
         except Exception as e:
-            logger.error(f"Error writing Excel file: {e}")
-            raise
+            raise ValueError(f"Error writing output file: {e}")
 
-    def validate_sheet_schema(self, sheet_name: str, df: DataFrame) -> List[str]:
+    def validate_sheet_schema(self, sheet_name: str, df: pd.DataFrame) -> List[str]:
         """Validate sheet data against schema requirements.
 
         Performs basic schema validation for each sheet, checking for:
@@ -192,7 +138,7 @@ class ExcelHandler:
 
         Returns:
             List[str]: List of validation error messages. Empty list if validation passes.
-            
+
         Example:
             >>> users_df = pd.DataFrame({
             ...     "username": ["user1"],  # Missing required user_id and email
@@ -200,7 +146,7 @@ class ExcelHandler:
             >>> errors = handler.validate_sheet_schema("Users", users_df)
             >>> print(errors)
             ['Missing required columns in Users sheet: {'user_id', 'email'}']
-        
+
         Note:
             Sheet-specific requirements:
             - Users: Must have user_id, username, and email columns
@@ -209,34 +155,42 @@ class ExcelHandler:
             - Group_Groups: Must have parent_group_id and child_group_id columns
         """
         errors = []
-        
+
         # Common validation for all sheets
         if df.empty:
             errors.append(f"Sheet '{sheet_name}' is empty")
-        
+
         # Sheet-specific validation
         if sheet_name == "Users":
             required_cols = ["user_id", "username", "email"]
             missing_cols = set(required_cols) - set(df.columns)
             if missing_cols:
-                errors.append(f"Missing required columns in Users sheet: {missing_cols}")
-        
+                errors.append(
+                    f"Missing required columns in Users sheet: {missing_cols}"
+                )
+
         elif sheet_name == "Groups":
             required_cols = ["group_id", "group_name"]
             missing_cols = set(required_cols) - set(df.columns)
             if missing_cols:
-                errors.append(f"Missing required columns in Groups sheet: {missing_cols}")
-        
+                errors.append(
+                    f"Missing required columns in Groups sheet: {missing_cols}"
+                )
+
         elif sheet_name == "User_Groups":
             required_cols = ["user_id", "group_id"]
             missing_cols = set(required_cols) - set(df.columns)
             if missing_cols:
-                errors.append(f"Missing required columns in User_Groups sheet: {missing_cols}")
-        
+                errors.append(
+                    f"Missing required columns in User_Groups sheet: {missing_cols}"
+                )
+
         elif sheet_name == "Group_Groups":
-            required_cols = ["parent_group_id", "child_group_id"]
+            required_cols = ["source_group_id", "destination_group_id"]
             missing_cols = set(required_cols) - set(df.columns)
             if missing_cols:
-                errors.append(f"Missing required columns in Group_Groups sheet: {missing_cols}")
-        
-        return errors 
+                errors.append(
+                    f"Missing required columns in Group_Groups sheet: {missing_cols}"
+                )
+
+        return errors
