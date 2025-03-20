@@ -1,0 +1,52 @@
+PROJECT: AD Role Mapping Tool
+
+MILESTONES:
+1. [IN PROGRESS] Project Setup and Infrastructure
+2. [IN PROGRESS] Core Data Processing Implementation
+3. [TODO] Role Mapping and Resolution
+4. [IN PROGRESS] Testing and Validation
+5. [TODO] Documentation and Deployment
+
+CURRENT TASKS:
+[IN PROGRESS] Project Setup and Infrastructure
+- [DONE] Create project directory structure
+- [DONE] Create requirements.txt with dependencies
+- [DONE] Create .env template
+- [DONE] Configure git pre-commit hooks for testing
+- [DONE] Set up Python virtual environment in init.sh
+- [DONE] Set up testing framework with pytest
+
+[IN PROGRESS] Core Data Processing Implementation
+- [IN PROGRESS] Implement excel_handler.py for file I/O
+- [TODO] Create data validation schemas
+- [TODO] Implement input data parsing
+- [TODO] Create data models for Users, Groups, and Roles
+- [TODO] Implement output data formatting
+
+[TODO] Role Mapping and Resolution
+- [TODO] Implement role_mapper.py for group-to-role mapping
+- [TODO] Create group_resolver.py for nested group resolution
+- [TODO] Implement role inheritance logic
+- [TODO] Create user-role mapping logic
+- [TODO] Implement group-role mapping logic
+
+[IN PROGRESS] Testing and Validation
+- [IN PROGRESS] Write unit tests for each module
+- [TODO] Create integration tests
+- [TODO] Implement test data fixtures
+- [TODO] Add error handling tests
+- [TODO] Create validation test suite
+
+[TODO] Documentation and Deployment
+- [DONE] Create initial README.md
+- [TODO] Complete inline code documentation
+- [TODO] Update README.md with final details
+- [TODO] Create user guide
+- [TODO] Document API and classes
+- [TODO] Create deployment guide
+
+NEXT STEPS:
+1. Complete excel_handler.py implementation
+2. Create data validation schemas
+3. Begin implementing role_mapper.py
+4. Add more test cases for excel_handler.py 

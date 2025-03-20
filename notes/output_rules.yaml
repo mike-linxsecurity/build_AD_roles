@@ -1,0 +1,130 @@
+Target_Excel_Workbook:
+  Users:
+    user_id:
+      type: string
+      description: Unique identifier for the user (AD ObjectGUID)
+      required: At least one of user_id, username, or email must be present
+      population: If absent, populate from email; if email absent, use username
+    username:
+      type: string
+      description: User’s login name (AD SamAccountName)
+      required: At least one of user_id, username, or email must be present
+      population: If absent, populate from email
+    email:
+      type: string
+      description: User’s email address (AD EmailAddress)
+      required: At least one of user_id, username, or email must be present
+    full_name:
+      type: string
+      description: User’s display name (AD DisplayName)
+      required: Either full_name or (first_name + last_name) must be present; all 3 fields required in output
+      population: Concatenate first_name and last_name if absent
+    first_name:
+      type: string
+      description: User’s first name (AD GivenName)
+      required: Either full_name or (first_name + last_name) must be present; all 3 fields required in output
+    last_name:
+      type: string
+      description: User’s last name (AD Surname)
+      required: Either full_name or (first_name + last_name) must be present; all 3 fields required in output
+    enabled:
+      type: boolean
+      description: Indicates if the user account is active (AD Enabled; output as Yes/No)
+    created_at:
+      type: string
+      description: Datetime when the user was created (ISO 8601 format, e.g., 2023-01-01T12:00:00.00Z)
+      required: Must follow valid datetime format
+    updated_at:
+      type: string
+      description: Datetime when the user was last updated (ISO 8601 format, e.g., 2023-01-01T12:00:00.00Z)
+      required: Must follow valid datetime format
+    last_login_at:
+      type: string
+      description: Datetime of the user’s last login (ISO 8601 format, e.g., 2023-01-01T12:00:00.00Z)
+      required: Must follow valid datetime format
+
+  Groups:
+    group_id:
+      type: string
+      description: Unique identifier for the group (AD ObjectGUID)
+      required: At least one of group_id or group_name must be present
+      population: If absent, assign an incrementing number
+    group_name:
+      type: string
+      description: Name of the group (AD Name)
+      required: At least one of group_id or group_name must be present
+    description:
+      type: string
+      description: Group description (AD Description)
+      required: Must be present with group_name
+      population: If absent, populate from group_name
+    output_order:
+      - group_id
+      - group_name
+      - description
+
+  Roles:
+    role_id:
+      type: string
+      description: Unique identifier for the role (mapped from group_id/ObjectGUID of predefined AD groups)
+      required: At least one of role_id or role_name must be present
+      population: If absent, use role_name
+    role_name:
+      type: string
+      description: Name of the role (mapped from group_name/Name of predefined AD groups)
+      required: At least one of role_id or role_name must be present
+    description:
+      type: string
+      description: Description of the role (mapped from group_description/Description of predefined AD groups)
+    output_order:
+      - role_id
+      - role_name
+      - description
+
+  User_Groups:
+    user_id:
+      type: string
+      description: User’s unique identifier (AD ObjectGUID)
+      required: Must be populated
+      population: Use user_id from Users tab; if absent, use email; if email absent, use username
+    group_id:
+      type: string
+      description: Group’s unique identifier (AD ObjectGUID)
+      required: Must be populated
+      population: Use group_id from Groups tab; if absent, use assigned number
+
+  Group_Groups:
+    parent_group_id:
+      type: string
+      description: Parent group’s unique identifier (AD ObjectGUID)
+      required: Must be populated
+      population: Use group_id from Groups tab; if absent, use assigned number
+    child_group_id:
+      type: string
+      description: Child group’s unique identifier (AD ObjectGUID)
+      required: Must be populated
+      population: Use group_id from Groups tab; if absent, use assigned number
+
+  User_Roles:
+    user_id:
+      type: string
+      description: User’s unique identifier (AD ObjectGUID)
+      required: Must be populated
+      population: Use user_id from Users tab; if absent, use email; if email absent, use username
+    role_id:
+      type: string
+      description: Role’s unique identifier (from Roles tab)
+      required: Must be populated
+      population: Use role_id from Roles tab; if absent, use role_name
+
+  Group_Roles:
+    group_id:
+      type: string
+      description: Group’s unique identifier (AD ObjectGUID)
+      required: Must be populated
+      population: Use group_id from Groups tab; if absent, use assigned number
+    role_id:
+      type: string
+      description: Role’s unique identifier (from Roles tab)
+      required: Must be populated
+      population: Use role_id from Roles tab; if absent, use role_name

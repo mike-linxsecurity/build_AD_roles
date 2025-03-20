@@ -1,0 +1,8 @@
+Use Python coding best practices
+Always maintain init.sh with python environment and requirements in an idempotent manner.
+Create, update and maintain todo.txt with project milestones and associated tasks tracked with next steps.
+Update the todo.txt after completing tasks.
+Commit code when you complete milestones.
+Create the test before writing the code.
+Always search your codebase for similar functions before writing code or a new test.
+Configure git so it executes tests before allowing Commit

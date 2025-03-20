@@ -1,0 +1,239 @@
+{
+  "Instructions": {
+    "title": "Instructions for Processing AD Data and Building Role Relationships",
+    "Objective": {
+      "description": "Develop a Python script (AD_oracle.py) to process an input file containing structured AD data (Users, Groups, User Groups, Group Groups) and generate role-based relationships (User_Roles, Group_Roles) by mapping predefined AD groups to roles, leveraging the group definitions in builtin_groups.json. The script will preserve the Original_Role_Groups as a priority list and unroll nested group relationships to assign roles to users and groups."
+    },
+    "Input": [
+      {
+        "Structured_Input_File": {
+          "Format": "Excel workbook (or similar structured format like CSV/JSON)",
+          "Tabs": [
+            {
+              "Users": "Contains user details (e.g., user_id, username, email, etc.)"
+            },
+            {
+              "Groups": "Contains group details (e.g., group_id, group_name, description)"
+            },
+            {
+              "User_Groups": "Links users to groups (e.g., user_id, group_id)"
+            },
+            {
+              "Group_Groups": "Defines nested group relationships (e.g., parent_group_id, child_group_id)"
+            }
+          ],
+          "Conforms_To": "The schema defined earlier (e.g., JSON schema provided)"
+        }
+      },
+      {
+        "Predefined_Group_List": {
+          "File": "builtin_groups.json",
+          "Description": "A JSON file containing categorized AD group names to be mapped to roles",
+          "Content": {
+            "BuiltIn_AD_Groups": [
+              "Domain Admins", "Enterprise Admins", "Schema Admins", "Pre-Windows 2000 Compatible Access",
+              "Cert Publishers", "RAS and IAS Servers", "Windows Authorization Access Group", "DnsAdmins"
+            ],
+            "Original_Role_Groups": [
+              "RDS Remote Access Servers", "RDS Endpoint Servers", "RDS Management Servers", "Hyper-V Administrators",
+              "Access Control Assistance Operators", "Remote Management Users", "Performance Monitor Users",
+              "Backup Operators", "Account Operators", "Server Operators", "Administrators",
+              "Certificate Service DCOM Access", "Remote Desktop Users", "Event Log Readers", "Print Operators",
+              "Group Policy Creator Owners", "Network Configuration Operators", "Distributed COM Users",
+              "Cryptographic Operators", "Performance Log Users"
+            ],
+            "Exchange_Server_Groups": [
+              "Exchange Organization Management", "Exchange Recipient Management", "Exchange Server Management",
+              "Exchange Trusted Subsystem", "Discovery Management", "Exchange Windows Permissions", "ExchangeLegacyInterop"
+            ],
+            "SQL_Server_Groups": [
+              "SQLServerMSSQLUser$<ComputerName>$MSSQLSERVER", "SQLServerMSASUser$<ComputerName>$MSSQLSERVER",
+              "SQLServerSQLAgentUser$<ComputerName>$MSSQLSERVER", "SQLServerFDHostUser$<ComputerName>$MSSQLSERVER"
+            ],
+            "SharePoint_Groups": [
+              "WSS_WPG", "WSS_ADMIN_WPG", "SharePoint_Shell_Access"
+            ],
+            "Azure_AD_Entra_ID_Groups": [
+              "Global Administrator", "Exchange Online Organization Management", "Exchange Online Recipient Management",
+              "Intune Administrator", "Security Administrator", "Compliance Administrator", "Privileged Role Administrator"
+            ],
+            "Additional_Enterprise_Groups": [
+              "TS Web Access Administrators", "Remote Access Servers", "WinRMRemoteWMIUsers__",
+              "Storage Replica Administrators", "Key Admins", "Enterprise Key Admins"
+            ]
+          },
+          "Note": "Original_Role_Groups is the priority list and remains exclusive; groups listed here are not duplicated elsewhere"
+        }
+      }
+    ],
+    "Steps": [
+      {
+        "Step_1": {
+          "title": "Load and Parse Input Data",
+          "tasks": [
+            "Read the input file (e.g., Excel workbook) into memory",
+            {
+              "Parse_Tabs": [
+                {
+                  "Users": "Map user_id to user details"
+                },
+                {
+                  "Groups": "Map group_id to group_name and description"
+                },
+                {
+                  "User_Groups": "Create a list of tuples (user_id, group_id) for user-group memberships"
+                },
+                {
+                  "Group_Groups": "Create a list of tuples (parent_group_id, child_group_id) for nested group relationships"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "Step_2": {
+          "title": "Load Predefined Groups from builtin_groups.json",
+          "tasks": [
+            "Read builtin_groups.json into a Python dictionary",
+            "Flatten all group categories into a single list of role-eligible group names, preserving Original_Role_Groups as the priority set",
+            {
+              "Example": "all_role_groups = list(set([group for category in json_data.values() for group in category]))"
+            },
+            "Create a mapping of group_name to role_id (initially, role_id can be the group_id from the Groups tab or a generated identifier)"
+          ]
+        }
+      },
+      {
+        "Step_3": {
+          "title": "Initialize Roles",
+          "tasks": [
+            {
+              "Populate_Roles_Tab": [
+                "For each group_name in all_role_groups that matches a group_name in the Groups tab:",
+                "Set role_id = group_id (from Groups)",
+                "Set role_name = group_name",
+                "Set description = description (from Groups)"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "Step_4": {
+          "title": "Unroll Group Relationships",
+          "tasks": [
+            {
+              "Build_Group_Hierarchy": [
+                "Use Group_Groups to create a recursive function that finds all child groups for a given parent_group_id",
+                {
+                  "Example": "For parent_group_id = G1 with children G2 and G3, and G2 having child G4, the full set for G1 is {G2, G3, G4}"
+                },
+                "Store this as a mapping: group_id → set of all nested group_ids (including itself)"
+              ]
+            },
+            "For each group_id in the Roles tab:",
+            "Identify all nested groups using the hierarchy",
+            "This set represents all groups that inherit the role"
+          ]
+        }
+      },
+      {
+        "Step_5": {
+          "title": "Populate Group_Roles",
+          "tasks": [
+            "For each role in the Roles tab:",
+            "Get the role_id and corresponding group_id (from the original group)",
+            {
+              "Add_Entry_to_Group_Roles": [
+                "group_id = original group_id (from Roles)",
+                "role_id = role_id"
+              ]
+            },
+            "For each nested group_id (from Step 4):",
+            {
+              "Add_Entry": [
+                "group_id = nested group_id",
+                "role_id = role_id"
+              ]
+            },
+            "Output: Group_Roles tab with all group-to-role mappings, including inherited roles from nested groups"
+          ]
+        }
+      },
+      {
+        "Step_6": {
+          "title": "Populate User_Roles",
+          "tasks": [
+            "For each role in the Roles tab:",
+            "Get the role_id and corresponding group_id",
+            "Retrieve all nested group_ids (from Step 4)",
+            "Query User_Groups for all user_ids associated with the group_id and its nested group_ids",
+            "For each unique user_id:",
+            {
+              "Add_Entry_to_User_Roles": [
+                "user_id = user_id (from User_Groups)",
+                "role_id = role_id"
+              ]
+            },
+            "Output: User_Roles tab with all user-to-role mappings based on group memberships"
+          ]
+        }
+      },
+      {
+        "Step_7": {
+          "title": "Generate Output",
+          "tasks": [
+            {
+              "Create_Output_Excel_Workbook": [
+                "Users: Original data (unchanged)",
+                "Groups: Original data (unchanged)",
+                "Roles: Populated with role mappings from Step 3",
+                "User_Groups: Original data (unchanged)",
+                "Group_Groups: Original data (unchanged)",
+                "User_Roles: Populated from Step 6",
+                "Group_Roles: Populated from Step 5"
+              ]
+            },
+            "Save the workbook (e.g., output_roles.xlsx)"
+          ]
+        }
+      }
+    ],
+    "Output": {
+      "description": "An Excel workbook with the full schema, where:",
+      "details": [
+        "Roles contains all predefined AD groups from builtin_groups.json mapped as roles",
+        "Group_Roles lists all groups (including nested) assigned to each role",
+        "User_Roles lists all users assigned to each role based on their group memberships (direct or nested)"
+      ]
+    },
+    "Notes": [
+      {
+        "Deduplication": "The script uses the deduplicated builtin_groups.json, ensuring Original_Role_Groups takes precedence and isn’t overlapped by other categories"
+      },
+      {
+        "Error_Handling": "Validate input data against the schema (e.g., required fields, population rules) and log errors if data is missing or malformed"
+      },
+      {
+        "Performance": "For large AD datasets, optimize the group hierarchy resolution (e.g., use memoization to avoid redundant traversals)"
+      }
+    ],
+    "Example_Workflow": {
+      "Input": [
+        "Groups: [{group_id: G1, group_name: \"Administrators\"}, {group_id: G2, group_name: \"SubGroup\"}]",
+        "User_Groups: [{user_id: U1, group_id: G2}]",
+        "Group_Groups: [{parent_group_id: G1, child_group_id: G2}]"
+      ],
+      "Roles": [
+        "{role_id: G1, role_name: \"Administrators\", description: \"...\"}"
+      ],
+      "Group_Roles": [
+        "{group_id: G1, role_id: G1}, {group_id: G2, role_id: G1} (G2 inherits from G1)"
+      ],
+      "User_Roles": [
+        "{user_id: U1, role_id: G1} (U1 in G2, which inherits G1’s role)"
+      ]
+    }
+  }
+}
