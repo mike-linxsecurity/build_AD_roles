@@ -1,4 +1,21 @@
-"""Schema validation utilities for AD Role Mapping Tool."""
+"""Schema validation utilities for AD Role Mapping Tool.
+
+This module provides validation functionality for Active Directory data schemas and relationships.
+It ensures that input data meets the required format and constraints before processing.
+
+The module defines validation rules for:
+- Users: AD user attributes and required fields
+- Groups: AD group attributes and hierarchical relationships
+- Roles: Role definitions mapped from AD groups
+- Relationships: User-Group and Group-Group relationships
+
+Example:
+    validator = SchemaValidator()
+    users_df = pd.DataFrame({...})
+    errors = validator.validate_dataframe(users_df, "Users")
+    if errors:
+        print("Validation failed:", errors)
+"""
 
 import logging
 import re
@@ -68,17 +85,41 @@ SCHEMA_RULES = {
 
 
 class SchemaValidator:
-    """Validates data against predefined schemas."""
+    """Validates data against predefined schemas for AD Role Mapping.
+    
+    This class provides methods to validate:
+    1. DataFrame schemas for Users, Groups, and Roles
+    2. Relationships between entities (User-Group and Group-Group)
+    3. Data types and formats (e.g., datetime fields, boolean values)
+    4. Conditional field requirements
+    
+    The validator uses the SCHEMA_RULES dictionary to define validation rules
+    for each entity type. It supports:
+    - Required field validation
+    - Data type checking
+    - Conditional field requirements
+    - ISO 8601 datetime format validation
+    - Boolean field validation (true/false/yes/no/1/0)
+    """
 
     @staticmethod
     def _is_valid_datetime(value: str) -> bool:
         """Check if a string is a valid ISO 8601 datetime.
 
+        The method validates that the datetime string follows the ISO 8601 format
+        and represents a valid date and time.
+
         Args:
-            value: String to validate
+            value: String to validate, expected in ISO 8601 format
+                  (e.g., "2024-03-20T12:00:00Z" or "2024-03-20T12:00:00+00:00")
 
         Returns:
-            bool: True if valid datetime, False otherwise
+            bool: True if the string is a valid ISO 8601 datetime, False otherwise
+
+        Note:
+            - Handles both 'Z' and explicit timezone offset formats
+            - Converts 'Z' to '+00:00' for parsing
+            - Returns False for None values or non-string inputs
         """
         try:
             datetime.fromisoformat(value.replace('Z', '+00:00'))
@@ -90,12 +131,34 @@ class SchemaValidator:
     def validate_dataframe(df: DataFrame, schema_name: str) -> List[str]:
         """Validate a DataFrame against its schema.
 
+        Performs comprehensive validation of a DataFrame against the predefined
+        schema rules, including field presence, data types, and conditional
+        requirements.
+
         Args:
-            df: DataFrame to validate
-            schema_name: Name of the schema to validate against
+            df: DataFrame to validate, containing the data to check
+            schema_name: Name of the schema to validate against ("Users", "Groups", or "Roles")
 
         Returns:
-            List[str]: List of validation errors
+            List[str]: List of validation error messages. Empty list if validation passes.
+
+        Examples:
+            >>> users_df = pd.DataFrame({
+            ...     "user_id": ["U1"],
+            ...     "email": ["user@example.com"],
+            ...     "full_name": ["John Doe"],
+            ...     "enabled": ["yes"],
+            ...     "created_at": ["2024-03-20T12:00:00Z"]
+            ... })
+            >>> errors = SchemaValidator.validate_dataframe(users_df, "Users")
+            >>> print(errors)
+            ['Missing required field: username', 'Missing required field: updated_at']
+
+        Note:
+            - Returns early with error if schema_name is unknown or DataFrame is empty
+            - Validates both required and conditional field requirements
+            - Performs type validation for all fields
+            - Special handling for boolean and datetime fields
         """
         errors = []
         schema = SCHEMA_RULES.get(schema_name)
@@ -163,14 +226,40 @@ class SchemaValidator:
                              user_groups_df: DataFrame, group_groups_df: DataFrame) -> List[str]:
         """Validate relationships between different entities.
 
+        Performs comprehensive validation of relationships between users, groups,
+        and nested group hierarchies. Checks for:
+        1. Valid user references in User-Group relationships
+        2. Valid group references in both User-Group and Group-Group relationships
+        3. Circular dependencies in group hierarchies
+
         Args:
-            users_df: Users DataFrame
-            groups_df: Groups DataFrame
+            users_df: Users DataFrame containing user records
+            groups_df: Groups DataFrame containing group records
             user_groups_df: User-Group relationships DataFrame
-            group_groups_df: Group-Group relationships DataFrame
+            group_groups_df: Group-Group relationships DataFrame (nested groups)
 
         Returns:
-            List[str]: List of validation errors
+            List[str]: List of validation error messages. Empty list if validation passes.
+
+        Examples:
+            >>> users_df = pd.DataFrame({"user_id": ["U1"]})
+            >>> groups_df = pd.DataFrame({"group_id": ["G1", "G2"]})
+            >>> user_groups = pd.DataFrame({"user_id": ["U1"], "group_id": ["G1"]})
+            >>> group_groups = pd.DataFrame({
+            ...     "parent_group_id": ["G1"],
+            ...     "child_group_id": ["G2"]
+            ... })
+            >>> errors = SchemaValidator.validate_relationships(
+            ...     users_df, groups_df, user_groups, group_groups
+            ... )
+            >>> print(errors)
+            []
+
+        Note:
+            - Handles empty DataFrames gracefully
+            - Detects both direct and indirect circular references
+            - Uses set operations for efficient ID validation
+            - Implements depth-first search for cycle detection
         """
         errors = []
         
@@ -205,6 +294,14 @@ class SchemaValidator:
             path = set()
             
             def has_cycle(node: str) -> bool:
+                """Check for cycles in the group hierarchy using DFS.
+                
+                Args:
+                    node: Current group ID being checked
+                
+                Returns:
+                    bool: True if a cycle is detected, False otherwise
+                """
                 if node in path:
                     return True
                 if node in visited:
