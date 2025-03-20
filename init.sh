@@ -82,12 +82,6 @@ if [ ! -f "src/builtin_groups.json" ]; then
         "Exchange Windows Permissions",
         "ExchangeLegacyInterop"
     ],
-    "SQL_Server_Groups": [
-        "SQLServerMSSQLUser$<ComputerName>$MSSQLSERVER",
-        "SQLServerMSASUser$<ComputerName>$MSSQLSERVER",
-        "SQLServerSQLAgentUser$<ComputerName>$MSSQLSERVER",
-        "SQLServerFDHostUser$<ComputerName>$MSSQLSERVER"
-    ],
     "SharePoint_Groups": [
         "WSS_WPG",
         "WSS_ADMIN_WPG",

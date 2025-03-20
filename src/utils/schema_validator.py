@@ -1,6 +1,8 @@
 """Schema validation utilities for AD Role Mapping Tool."""
 
 import logging
+import re
+from datetime import datetime
 from typing import Dict, List, Optional, Union
 
 import pandas as pd
@@ -20,6 +22,7 @@ SCHEMA_RULES = {
             "updated_at": str,
             "last_login_at": str
         },
+        "datetime_fields": ["created_at", "updated_at", "last_login_at"],
         "conditional_required": [
             {
                 "fields": ["user_id", "username", "email"],
@@ -68,6 +71,22 @@ class SchemaValidator:
     """Validates data against predefined schemas."""
 
     @staticmethod
+    def _is_valid_datetime(value: str) -> bool:
+        """Check if a string is a valid ISO 8601 datetime.
+
+        Args:
+            value: String to validate
+
+        Returns:
+            bool: True if valid datetime, False otherwise
+        """
+        try:
+            datetime.fromisoformat(value.replace('Z', '+00:00'))
+            return True
+        except (ValueError, AttributeError):
+            return False
+
+    @staticmethod
     def validate_dataframe(df: DataFrame, schema_name: str) -> List[str]:
         """Validate a DataFrame against its schema.
 
@@ -90,15 +109,31 @@ class SchemaValidator:
         # Validate required fields
         for field, field_type in schema["required_fields"].items():
             if field not in df.columns:
-                errors.append(f"Missing required field: {field}")
+                # Check conditional requirements before reporting missing field
+                is_conditionally_required = any(
+                    field in condition["fields"] 
+                    for condition in schema.get("conditional_required", [])
+                )
+                if not is_conditionally_required:
+                    errors.append(f"Missing required field: {field}")
             else:
-                # Type validation (basic)
+                # Type validation
                 try:
                     if field_type == bool:
                         # Handle boolean fields that might be "yes"/"no" strings
                         if not all(str(x).lower() in ['true', 'false', 'yes', 'no', '1', '0'] 
                                  for x in df[field].dropna()):
                             errors.append(f"Invalid boolean values in field: {field}")
+                    elif field in schema.get("datetime_fields", []):
+                        # Validate datetime fields
+                        invalid_dates = [
+                            str(x) for x in df[field].dropna() 
+                            if not SchemaValidator._is_valid_datetime(str(x))
+                        ]
+                        if invalid_dates:
+                            errors.append(
+                                f"Invalid datetime values in field {field}: {invalid_dates}"
+                            )
                     else:
                         df[field].astype(field_type)
                 except (ValueError, TypeError):
@@ -108,10 +143,18 @@ class SchemaValidator:
         for condition in schema.get("conditional_required", []):
             fields = condition["fields"]
             min_required = condition["min_required"]
-            present_fields = [f for f in fields if f in df.columns and not df[f].isna().all()]
             
+            # Check if the required fields exist in the DataFrame
+            present_fields = [f for f in fields if f in df.columns]
             if len(present_fields) < min_required:
                 errors.append(condition["message"])
+                continue
+            
+            # For each row, check if the condition is met
+            for idx, row in df.iterrows():
+                valid_fields = [f for f in present_fields if pd.notna(row.get(f))]
+                if len(valid_fields) < min_required:
+                    errors.append(f"Row {idx}: {condition['message']}")
 
         return errors
 
@@ -182,4 +225,4 @@ class SchemaValidator:
                     errors.append(f"Circular reference detected in group relationships starting from: {group_id}")
                     break
 
-        return errors 
+        return errors
