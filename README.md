@@ -16,9 +16,9 @@ The AD Role Mapping Tool processes Active Directory data exported to Excel forma
 graph TD
     A[Export AD Data] -->|Export_AD_v1.1.ps1| B[Excel Input File]
     B -->|Place in input/| C[AD Role Mapping Tool]
-    C -->|1. Load Data| D[Excel Handler]
-    D -->|2. Validate| E[Schema Validator]
-    E -->|3. Process| F[Role Mapper]
+    C -->|Load Data| D[Excel Handler]
+    D -->|Validate| E[Schema Validator]
+    E -->|Process| F[Role Mapper]
 
     subgraph "Role Mapping Process"
         F -->|3.1| G[Load Builtin Groups]
@@ -27,7 +27,7 @@ graph TD
         I -->|3.4| J[Resolve User Roles]
     end
 
-    J -->|4. Generate| K[Output Excel File]
+    J -->|Generate| K[Output Excel File]
     K -->|Save to output/| L[Final Excel with Roles]
 
     style C fill:#f9f,stroke:#333,stroke-width:4px
