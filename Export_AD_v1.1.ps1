@@ -1,6 +1,33 @@
 # AD_Export.ps1
 # Maintained by the Linx Security team
-# Version: 1.1 - 2025-03-12 Performance optimized and error handling improved and collection of Group Groups
+# Version: 1.1 - 2025-03-12
+#
+# PURPOSE:
+# This script exports Active Directory (AD) data including users, groups, roles, and their relationships
+# to an Excel file for further processing and analysis.
+#
+# FEATURES:
+# - Exports Users with detailed attributes
+# - Exports Groups and nested group relationships
+# - Maps built-in AD roles and permissions
+# - Handles Azure AD/Entra ID integration
+# - Includes error handling and retry logic
+# - Performance optimized for large directories
+#
+# PREREQUISITES:
+# - PowerShell 5.1 or higher
+# - ImportExcel module
+# - Active Directory module
+# - Appropriate AD read permissions
+#
+# OUTPUT:
+# Creates an Excel file with the following sheets:
+# - Users: User details and attributes
+# - Groups: AD group information
+# - Roles: Mapped AD roles
+# - User_Groups: User-to-group memberships
+# - Group_Groups: Nested group relationships
+# - Role_Groups: Role-to-group mappings
 
 # Detect PowerShell version
 $PowerShellVersion = $PSVersionTable.PSVersion.Major
@@ -297,3 +324,38 @@ try {
     Write-Host "Attempted to write to: $outputFile"
     exit 1
 }
+
+# Add summary report generation before script end
+$scriptEndTime = Get-Date
+$totalDuration = ($scriptEndTime - $scriptStartTime).TotalSeconds
+
+# Create and display summary report
+Write-Host @"
+
+========================================
+   AD Export Summary Report
+========================================
+Run Date (UTC): $($scriptStartTime.ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss'))
+Domain: $domainName
+Output File: $outputFile
+
+Data Collection Statistics:
+-------------------------
+Users Found: $($users.Count)
+Groups Found: $($groups.Count)
+Roles Mapped: $($roles.Count)
+User-Group Relations: $($userGroups.Count)
+Group-Group Relations: $($groupGroups.Count)
+Role-Group Mappings: $($roleGroups.Count)
+
+Performance Metrics:
+------------------
+Users Processing Time: $([math]::Round($usersDuration / 60, 2)) minutes
+Groups Processing Time: $([math]::Round($groupsDuration / 60, 2)) minutes
+User-Groups Processing Time: $([math]::Round($userGroupsDuration, 2)) seconds
+Total Execution Time: $([math]::Round($totalDuration / 60, 2)) minutes
+
+Status: Export Completed Successfully
+========================================
+
+"@
