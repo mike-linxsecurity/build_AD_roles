@@ -1,148 +1,194 @@
 #!/usr/bin/env python3
-"""AD Role Mapping Tool main script.
+"""Main script for AD role mapping tool.
 
-This script is the main entry point for the AD Role Mapping Tool. It orchestrates
-the process of mapping Active Directory groups to roles and resolving role
-assignments for users. The tool:
-
-1. Reads AD data from an Excel file containing:
-   - Users sheet: AD user information
-   - Groups sheet: AD group information
-   - User_Groups sheet: User-group memberships
-   - Group_Groups sheet: Group hierarchy relationships
-
-2. Validates the input data:
-   - Checks for required sheets and columns
-   - Validates data types and formats
-   - Ensures relationship integrity
-
-3. Maps AD groups to roles:
-   - Uses builtin_groups.json to identify role-eligible groups
-   - Creates role definitions from eligible groups
-   - Resolves role inheritance through group hierarchies
-   - Determines user role assignments
-
-4. Outputs results to a new Excel file with additional sheets:
-   - Roles: Mapped role definitions
-   - User_Roles: User role assignments
-   - Group_Roles: Group role assignments
-
-Usage:
-    python AD_oracle.py --input input.xlsx --output output.xlsx [options]
-
-Environment Variables:
-    LOG_LEVEL: Set logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-              Default: INFO
-
-Example:
-    # Basic usage
-    python AD_oracle.py --input ad_export.xlsx --output role_mappings.xlsx
-
-    # With custom builtin groups and debug logging
-    python AD_oracle.py \\
-        --input ad_export.xlsx \\
-        --output role_mappings.xlsx \\
-        --builtin-groups custom_groups.json \\
-        --log-level DEBUG
+This script processes AD data from Excel files and maps roles based on group
+memberships.
 """
 
-import argparse
-import json
 import logging
 import os
+import sys
+import traceback
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Union
 
 import pandas as pd
 
-from .process_input import process_input_file
-from .utils.excel_handler import ExcelHandler
-from .utils.role_mapper import RoleMapper
+from src.process_input import process_input_file
+from src.utils.excel_handler import ExcelHandler
+from src.utils.role_mapper import RoleMapper
+from src.utils.schema_validator import SchemaValidator
 
 # Configure logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-# Create a custom formatter that only shows the message
 class UserFriendlyFormatter(logging.Formatter):
+    """Format log messages in a user-friendly way."""
+
     def format(self, record):
+        """Format the log record."""
         if record.levelno == logging.INFO:
             return record.getMessage()
         return ""
 
 
-# Configure console handler with custom formatter
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(UserFriendlyFormatter())
-logger.addHandler(console_handler)
-
-
-def setup_logging():
-    """Configure logging with user-friendly formatting."""
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-
-    # Remove any existing handlers
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
-
-    # Add console handler with custom formatter
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(UserFriendlyFormatter())
-    logger.addHandler(console_handler)
+def setup_logging(log_level: str):
+    """Set up logging configuration."""
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler("logs/ad_role_mapper.log"),
+        ],
+    )
+    # Set log level for specific loggers
+    logging.getLogger("src").setLevel(logging.INFO)
+    logging.getLogger("src.utils").setLevel(logging.INFO)
 
 
 def process_ad_data(
     input_file: Union[str, Path],
     output_file: Union[str, Path],
     builtin_groups_file: Union[str, Path],
-) -> None:
+) -> int:
     """Process AD data and create role mappings.
 
     Args:
         input_file: Path to the input Excel file containing AD data
         output_file: Path where the processed data will be saved
-        builtin_groups_file: Path to the JSON file containing builtin group definitions
+        builtin_groups_file: Path to JSON file containing builtin group definitions
+
+    Returns:
+        0 on success, 1 on failure
     """
-    setup_logging()
-    logger = logging.getLogger(__name__)
+    try:
+        setup_logging(os.getenv("LOG_LEVEL", "INFO"))
+        logger = logging.getLogger(__name__)
 
-    print(f"Processing input file: {input_file}")
+        logger.info("Processing input file: %s", input_file)
 
-    # Process input file
-    processed_data = process_input_file(input_file)
+        # Process input file with builtin groups
+        processed_data = process_input_file(input_file, builtin_groups_file)
+        logger.debug("Processed data: %s", processed_data)
 
-    # Create role mapper instance
-    role_mapper = RoleMapper(builtin_groups_file)
+        # Validate output data
+        if not isinstance(processed_data, dict):
+            raise ValueError("Processed data must be a dictionary")
+        if "Roles" not in processed_data:
+            raise ValueError("Processed data must contain 'Roles' key")
+        if not isinstance(processed_data["Roles"], pd.DataFrame):
+            raise ValueError("Roles must be a DataFrame")
+        if len(processed_data["Roles"]) == 0:
+            raise ValueError("No roles were created from the input groups")
 
-    # Create role mappings
-    role_mappings = role_mapper.create_role_mappings(processed_data["Groups"])
+        # Write output
+        excel_handler = ExcelHandler(input_file)
+        excel_handler.save_sheets(processed_data, output_file)
 
-    # Add role-related sheets to the output
-    processed_data.update(role_mappings)
+        # Print summary
+        users_count = (
+            len(processed_data["Users"])
+            if isinstance(processed_data["Users"], pd.DataFrame)
+            else 0
+        )
+        groups_count = (
+            len(processed_data["Groups"])
+            if isinstance(processed_data["Groups"], pd.DataFrame)
+            else 0
+        )
+        roles_count = (
+            len(processed_data["Roles"])
+            if isinstance(processed_data["Roles"], pd.DataFrame)
+            else 0
+        )
+        group_roles_count = (
+            len(processed_data["Group_Roles"])
+            if isinstance(processed_data["Group_Roles"], pd.DataFrame)
+            else 0
+        )
+        user_roles_count = (
+            len(processed_data["User_Roles"])
+            if isinstance(processed_data["User_Roles"], pd.DataFrame)
+            else 0
+        )
 
-    # Write output
-    excel_handler = ExcelHandler()
-    excel_handler.write_output(output_file, processed_data)
+        print("\n✨ AD Role Mapping Complete!\n")
+        print("📊 Summary:")
+        print(f"  • Users processed: {users_count}")
+        print(f"  • Groups processed: {groups_count}")
+        print(f"  • Roles created: {roles_count}")
+        print(f"  • Group-role mappings: {group_roles_count}")
+        print(f"  • User-role mappings: {user_roles_count}\n")
+        print(f"📁 Output file: {output_file}")
 
-    # Print summary
-    users_count = len(processed_data["Users"])
-    groups_count = len(processed_data["Groups"])
-    roles_count = len(processed_data.get("Roles", []))
-    role_groups_count = len(processed_data.get("Role_Groups", []))
+        return 0
+    except Exception as e:
+        logger.error(f"Error processing AD data: {e}")
+        return 1
 
-    print("\n✨ AD Role Mapping Complete!\n")
-    print("📊 Summary:")
-    print(f"  • Users processed: {users_count}")
-    print(f"  • Groups processed: {groups_count}")
-    print(f"  • Roles created: {roles_count}")
-    print(f"  • Role-Group mappings: {role_groups_count}\n")
-    print(f"📁 Output file: {output_file}")
+
+def process_directory(
+    input_dir: Union[str, Path],
+    output_dir: Union[str, Path],
+    builtin_groups_file: Union[str, Path],
+) -> int:
+    """Process all Excel files in a directory.
+
+    Args:
+        input_dir: Directory containing input Excel files
+        output_dir: Directory where output files will be saved
+        builtin_groups_file: Path to JSON file containing builtin group definitions
+
+    Returns:
+        0 on success, 1 on failure
+    """
+    input_dir = Path(input_dir)
+    output_dir = Path(output_dir)
+    builtin_groups_file = Path(builtin_groups_file)
+
+    # Ensure directories exist
+    input_dir.mkdir(exist_ok=True)
+    output_dir.mkdir(exist_ok=True)
+
+    # Check if builtin_groups.json exists
+    if not builtin_groups_file.exists():
+        print("❌ Required file src/builtin_groups.json not found.")
+        return 1
+
+    # Find Excel files in input directory
+    excel_files = list(input_dir.glob("*.xlsx"))
+
+    if not excel_files:
+        print("❌ No Excel files found in input directory.")
+        print("Please place your AD export files in the 'input' directory.")
+        return 1
+
+    # Process each Excel file
+    for excel_file in excel_files:
+        output_file = output_dir / f"processed_{excel_file.name}"
+        print(f"\n🔄 Processing {excel_file.name}...")
+        try:
+            process_ad_data(str(excel_file), str(output_file), str(builtin_groups_file))
+            print(f"✅ Output saved to: {output_file}")
+        except Exception as e:
+            print(f"❌ Error processing {excel_file.name}:")
+            print(f"  {str(e)}")
+            print("\nTraceback:")
+            traceback.print_exc()
+            continue
+
+    print("\n✅ Conversion completed successfully!")
+    print("Check the 'output' directory for processed files.")
+    return 0
 
 
 def parse_args():
     """Parse command line arguments."""
+    import argparse
+
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -150,15 +196,13 @@ def parse_args():
     parser.add_argument(
         "--input",
         type=Path,
-        required=True,
-        help="Path to input Excel file containing AD data",
+        help="Path to input Excel file containing AD data or directory containing Excel files",
     )
 
     parser.add_argument(
         "--output",
         type=Path,
-        required=True,
-        help="Path to write output Excel file with role mappings",
+        help="Path to write output Excel file or directory for processed files",
     )
 
     parser.add_argument(
@@ -178,25 +222,30 @@ def parse_args():
     return parser.parse_args()
 
 
-def main():
-    """Main entry point."""
-    args = parse_args()
-
-    # Configure logging
-    logging.basicConfig(
-        level=args.log_level,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
-    logger = logging.getLogger(__name__)
-
+def main() -> int:
+    """Main function to process AD data."""
     try:
-        # Process AD data
-        process_ad_data(args.input, args.output, args.builtin_groups)
+        args = parse_args()
+        setup_logging(args.log_level)
 
-        return 0
+        # If input is a directory, process all Excel files
+        if args.input and args.input.is_dir():
+            if not args.output:
+                args.output = Path("output")
+            return process_directory(args.input, args.output, args.builtin_groups)
+
+        # Otherwise process a single file
+        if not args.input or not args.output:
+            print(
+                "❌ Both --input and --output arguments are required for single file processing"
+            )
+            return 1
+
+        logger.info(f"Processing input file: {args.input}")
+        return process_ad_data(args.input, args.output, args.builtin_groups)
 
     except Exception as e:
-        logger.error(f"Error processing AD data: {str(e)}")
+        logger.error(f"Error processing AD data: {e}")
         return 1
 
 

@@ -1,13 +1,9 @@
-"""Map Active Directory groups to roles based on predefined rules.
-
-This module handles the mapping of AD groups to roles, including the creation
-of role-group relationships and role hierarchies.
-"""
+"""Role mapping utilities for AD Role Mapping Tool."""
 
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Set, Union
+from typing import Dict, List, Set, Tuple
 
 import pandas as pd
 
@@ -15,152 +11,191 @@ logger = logging.getLogger(__name__)
 
 
 class RoleMapper:
-    """Map AD groups to roles based on predefined rules."""
+    """Class for mapping roles based on group memberships."""
 
-    def __init__(self, builtin_groups_file: Union[str, Path]):
-        """Initialize RoleMapper with builtin groups configuration.
+    def __init__(self, builtin_groups_file: str):
+        """Initialize RoleMapper with path to builtin groups file."""
+        self.builtin_groups_file = builtin_groups_file
+        self.role_groups = self._load_role_groups()
+        logger.debug(f"Loaded role groups: {self.role_groups}")
 
-        Args:
-            builtin_groups_file: Path to JSON file containing builtin group definitions
-        """
-        self.builtin_groups = self._load_builtin_groups(builtin_groups_file)
+    def _load_role_groups(self) -> Dict[str, Set[str]]:
+        """Load role groups from configuration file."""
+        if not Path(self.builtin_groups_file).exists():
+            raise FileNotFoundError(
+                f"Builtin groups file not found: {self.builtin_groups_file}"
+            )
 
-    def _load_builtin_groups(self, builtin_groups_file: Union[str, Path]) -> Set[str]:
-        """Load builtin groups configuration from JSON file.
+        with open(self.builtin_groups_file) as f:
+            config = json.load(f)
 
-        Args:
-            builtin_groups_file: Path to JSON file containing builtin group definitions
+        role_groups = {}
 
-        Returns:
-            Set of role-eligible group names
+        # Handle format with "groups" key containing list of group objects
+        if "groups" in config:
+            # Convert to category format
+            role_groups["Original_Role_Groups"] = set()
+            for group in config["groups"]:
+                role_groups["Original_Role_Groups"].add(group["name"])
+        else:
+            # Handle format with categories mapping to lists of group names
+            role_groups = {category: set(groups) for category, groups in config.items()}
 
-        Raises:
-            FileNotFoundError: If builtin_groups_file doesn't exist
-            json.JSONDecodeError: If file contains invalid JSON
-        """
-        try:
-            with open(builtin_groups_file) as f:
-                config = json.load(f)
+        logger.debug(f"Loaded role groups: {role_groups}")
+        return role_groups
 
-            # Collect all role-eligible groups from all categories
-            role_groups = set()
-            for category in ["Original_Role_Groups", "Additional_Role_Groups"]:
-                if category in config:
-                    role_groups.update(config[category])
-            return role_groups
-
-        except FileNotFoundError:
-            logger.error("❌ Builtin groups file not found")
-            raise
-        except json.JSONDecodeError:
-            logger.error("❌ Invalid JSON in builtin groups file")
-            raise
-
-    def create_role_mappings(self, groups_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
-        """Create role mappings from AD groups.
-
-        Args:
-            groups_df: DataFrame containing AD group information
-
-        Returns:
-            Dict containing 'Roles' and 'Role_Groups' DataFrames
-        """
+    def create_role_mappings(
+        self, input_groups: pd.DataFrame
+    ) -> Dict[str, pd.DataFrame]:
+        """Create role and group-role mappings based on input groups."""
         roles = []
-        role_groups = []
+        group_roles = []
 
-        for _, group in groups_df.iterrows():
-            if group["group_name"] in self.builtin_groups:
-                # Create role entry
-                role = {
-                    "role_id": group["group_id"],
-                    "role_name": group["group_name"],
-                    "description": group.get("description", ""),
-                }
-                roles.append(role)
+        # Create a set of input group names (case-insensitive)
+        input_group_names = {
+            name.lower(): (idx, name)
+            for idx, name in zip(input_groups["group_id"], input_groups["group_name"])
+        }
 
-                # Create role-group mapping
-                role_group = {
-                    "group_id": group["group_id"],
-                    "role_id": group["group_id"],
-                }
-                role_groups.append(role_group)
+        # Process each category of role groups
+        for category, role_groups in self.role_groups.items():
+            # Check each role group
+            for role_group in role_groups:
+                role_group_lower = role_group.lower()
+                if role_group_lower in input_group_names:
+                    group_id, group_name = input_group_names[role_group_lower]
+                    role_id = f"R_{group_name}"  # Use the original group name
+                    roles.append(
+                        {
+                            "role_id": role_id,
+                            "role_name": group_name,  # Use the original group name
+                            "description": f"Role for {group_name}",
+                            "source": category,
+                        }
+                    )
+                    group_roles.append({"group_id": group_id, "role_id": role_id})
 
-        # Create DataFrames
+        logger.info(
+            f"Created {len(roles)} roles and {len(group_roles)} group-role mappings"
+        )
+
+        # Create DataFrames with required columns
         roles_df = (
             pd.DataFrame(roles)
             if roles
-            else pd.DataFrame(columns=["role_id", "role_name", "description"])
+            else pd.DataFrame(columns=["role_id", "role_name", "description", "source"])
         )
-        role_groups_df = (
-            pd.DataFrame(role_groups)
-            if role_groups
+        group_roles_df = (
+            pd.DataFrame(group_roles)
+            if group_roles
             else pd.DataFrame(columns=["group_id", "role_id"])
         )
 
-        return {"Roles": roles_df, "Role_Groups": role_groups_df}
+        # Ensure required columns are present
+        if not roles_df.empty:
+            roles_df = roles_df[["role_id", "role_name", "description", "source"]]
+        if not group_roles_df.empty:
+            group_roles_df = group_roles_df[["group_id", "role_id"]]
 
-    def create_role_group_mappings(
-        self, sheets: Dict[str, pd.DataFrame]
+        return {"Roles": roles_df, "Group_Roles": group_roles_df}
+
+    def resolve_group_roles(
+        self,
+        roles_df: pd.DataFrame,
+        group_groups_df: pd.DataFrame,
+        groups_df: pd.DataFrame = None,
+        group_roles_df: pd.DataFrame = None,
     ) -> pd.DataFrame:
-        """Create role-group mappings including group hierarchy relationships.
+        """Resolve group-role relationships based on group-group relationships.
 
         Args:
-            sheets: Dict containing 'Groups' and optionally 'Group_Groups' DataFrames
+            roles_df: DataFrame containing role definitions
+            group_groups_df: DataFrame containing group hierarchy relationships
+            groups_df: DataFrame containing group information (optional)
+            group_roles_df: DataFrame containing direct group-role mappings (optional)
 
         Returns:
-            DataFrame containing role-group mappings
+            DataFrame containing group-role assignments including inherited roles
         """
-        # Get initial role mappings
-        role_mappings = self.create_role_mappings(sheets["Groups"])
-        role_groups_df = role_mappings["Role_Groups"]
-
-        # If there are no group hierarchies, return the direct mappings
-        if "Group_Groups" not in sheets or sheets["Group_Groups"].empty:
-            return role_groups_df
-
-        # Process group hierarchies
-        group_groups_df = sheets["Group_Groups"]
-        new_mappings = []
-
-        for _, row in group_groups_df.iterrows():
-            parent_id = row["source_group_id"]
-            child_id = row["destination_group_id"]
-
-            # If parent has roles, child inherits them
-            parent_roles = role_groups_df[role_groups_df["group_id"] == parent_id]
-            for _, parent_role in parent_roles.iterrows():
-                new_mappings.append(
-                    {"group_id": child_id, "role_id": parent_role["role_id"]}
-                )
-
-        # Add new mappings if any were created
-        if new_mappings:
-            new_mappings_df = pd.DataFrame(new_mappings)
-            role_groups_df = pd.concat(
-                [role_groups_df, new_mappings_df], ignore_index=True
+        if group_groups_df.empty or group_roles_df is None or group_roles_df.empty:
+            return (
+                group_roles_df
+                if group_roles_df is not None
+                else pd.DataFrame(columns=["group_id", "role_id"])
             )
-            role_groups_df = role_groups_df.drop_duplicates()
 
-        return role_groups_df
+        # Create a mapping of child groups to their parent groups
+        child_to_parent = {}
+        for _, row in group_groups_df.iterrows():
+            child = row["child_group_id"]
+            parent = row["parent_group_id"]
+            if child not in child_to_parent:
+                child_to_parent[child] = set()
+            child_to_parent[child].add(parent)
+
+        # Helper function to get all parent groups recursively
+        def get_all_parents(group_id: str, visited: Set[str] = None) -> Set[str]:
+            if visited is None:
+                visited = set()
+            if group_id in visited:
+                return set()
+            visited.add(group_id)
+            parents = child_to_parent.get(group_id, set())
+            all_parents = parents.copy()
+            for parent in parents:
+                all_parents.update(get_all_parents(parent, visited))
+            return all_parents
+
+        # Process all groups and their roles
+        resolved_roles = []
+        processed_combinations = set()
+
+        # Get all unique groups
+        all_groups = set(group_roles_df["group_id"].unique())
+        if not group_groups_df.empty:
+            all_groups.update(group_groups_df["parent_group_id"].unique())
+            all_groups.update(group_groups_df["child_group_id"].unique())
+
+        for group_id in all_groups:
+            # Get all parent groups
+            parent_groups = get_all_parents(group_id)
+            parent_groups.add(group_id)  # Include the group itself
+
+            # Add roles from all parent groups
+            for parent_id in parent_groups:
+                parent_roles = group_roles_df[group_roles_df["group_id"] == parent_id]
+                for _, role_row in parent_roles.iterrows():
+                    combination = (group_id, role_row["role_id"])
+                    if combination not in processed_combinations:
+                        resolved_roles.append(
+                            {"group_id": group_id, "role_id": role_row["role_id"]}
+                        )
+                        processed_combinations.add(combination)
+
+        # Create final DataFrame
+        result_df = pd.DataFrame(resolved_roles)
+        if result_df.empty:
+            result_df = pd.DataFrame(columns=["group_id", "role_id"])
+
+        return result_df.drop_duplicates()
 
     def resolve_user_roles(
-        self, user_groups_df: pd.DataFrame, role_groups_df: pd.DataFrame
+        self, user_groups_df: pd.DataFrame, group_roles_df: pd.DataFrame
     ) -> pd.DataFrame:
-        """Resolve user role assignments based on group memberships.
+        """Create user-role relationships based on user-group and group-role relationships.
 
         Args:
-            user_groups_df: DataFrame containing user-group relationships
-            role_groups_df: DataFrame containing role-group mappings
+            user_groups_df: DataFrame containing user-group memberships
+            group_roles_df: DataFrame containing group-role assignments
 
         Returns:
             DataFrame containing user-role assignments
         """
-        # Merge user-group relationships with role-group mappings
-        user_roles = pd.merge(
-            user_groups_df, role_groups_df, on="group_id", how="inner"
-        )
+        if user_groups_df.empty or group_roles_df.empty:
+            return pd.DataFrame(columns=["user_id", "role_id"])
 
-        # Select and rename columns
-        user_roles = user_roles[["user_id", "role_id"]].drop_duplicates()
-
-        return user_roles
+        # Merge user-group and group-role relationships
+        user_roles = user_groups_df.merge(group_roles_df, on="group_id")[
+            ["user_id", "role_id"]
+        ]
+        return user_roles.drop_duplicates()

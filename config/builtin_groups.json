@@ -1,0 +1,47 @@
+{
+    "BuiltIn_AD_Groups": [
+        "Domain Admins"
+    ],
+    "Original_Role_Groups": [
+        "Administrators",
+        "Users",
+        "Print Operators",
+        "Backup Operators",
+        "Remote Desktop Users",
+        "Network Configuration Operators",
+        "Performance Monitor Users",
+        "Performance Log Users",
+        "Distributed COM Users",
+        "IIS_IUSRS",
+        "Cryptographic Operators",
+        "Event Log Readers",
+        "Certificate Service DCOM Access",
+        "RDS Remote Access Servers",
+        "RDS Endpoint Servers",
+        "RDS Management Servers",
+        "Hyper-V Administrators",
+        "Access Control Assistance Operators",
+        "Remote Management Users",
+        "Storage Replica Administrators",
+        "Domain Controllers",
+        "Schema Admins",
+        "Enterprise Admins",
+        "Domain Admins",
+        "Server Operators",
+        "Account Operators",
+        "Terminal Server License Servers",
+        "Windows Authorization Access Group",
+        "Incoming Forest Trust Builders",
+        "Read-only Domain Controllers",
+        "Enterprise Read-only Domain Controllers",
+        "Cloneable Domain Controllers",
+        "Protected Users",
+        "Key Admins",
+        "Enterprise Key Admins",
+        "DnsAdmins",
+        "DnsUpdateProxy"
+    ],
+    "Exchange_Server_Groups": [
+        "Exchange Admins"
+    ]
+}

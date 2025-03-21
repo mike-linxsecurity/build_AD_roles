@@ -21,51 +21,173 @@ class SchemaValidator:
     including field presence, data types, and relationships between entities.
     """
 
+    SCHEMAS = {
+        "Users": {
+            "required": True,
+            "fields": {
+                "user_id": {
+                    "type": "string",
+                    "required": "conditional",
+                    "condition": "At least one of user_id, username, or email must be present",
+                    "population": "If absent, populate from email; if email absent, use username",
+                },
+                "username": {
+                    "type": "string",
+                    "required": "conditional",
+                    "condition": "At least one of user_id, username, or email must be present",
+                    "population": "If absent, populate from email",
+                },
+                "email": {
+                    "type": "string",
+                    "required": "conditional",
+                    "condition": "At least one of user_id, username, or email must be present",
+                },
+                "full_name": {
+                    "type": "string",
+                    "required": "conditional",
+                    "condition": "Either full_name or (first_name + last_name) must be present",
+                    "population": "Concatenate first_name and last_name if absent",
+                },
+                "first_name": {
+                    "type": "string",
+                    "required": "conditional",
+                    "condition": "Either full_name or (first_name + last_name) must be present",
+                },
+                "last_name": {
+                    "type": "string",
+                    "required": "conditional",
+                    "condition": "Either full_name or (first_name + last_name) must be present",
+                },
+                "enabled": {"type": "boolean", "required": True},
+                "created_at": {
+                    "type": "datetime",
+                    "required": True,
+                    "format": "ISO 8601",
+                },
+                "updated_at": {
+                    "type": "datetime",
+                    "required": True,
+                    "format": "ISO 8601",
+                },
+                "last_login_at": {
+                    "type": "datetime",
+                    "required": True,
+                    "format": "ISO 8601",
+                },
+            },
+        },
+        "Groups": {
+            "required": True,
+            "fields": {
+                "group_id": {
+                    "type": "string",
+                    "required": "conditional",
+                    "condition": "At least one of group_id or group_name must be present",
+                    "population": "If absent, assign an incrementing number",
+                },
+                "group_name": {
+                    "type": "string",
+                    "required": "conditional",
+                    "condition": "At least one of group_id or group_name must be present",
+                },
+                "description": {
+                    "type": "string",
+                    "required": True,
+                    "population": "If absent, populate from group_name",
+                },
+            },
+            "output_order": ["group_id", "group_name", "description"],
+        },
+        "Roles": {
+            "required": True,
+            "fields": {
+                "role_id": {
+                    "type": "string",
+                    "required": "conditional",
+                    "condition": "At least one of role_id or role_name must be present",
+                    "population": "If absent, use role_name",
+                },
+                "role_name": {
+                    "type": "string",
+                    "required": "conditional",
+                    "condition": "At least one of role_id or role_name must be present",
+                },
+                "description": {"type": "string", "required": True},
+            },
+            "output_order": ["role_id", "role_name", "description"],
+        },
+        "User_Groups": {
+            "required": True,
+            "fields": {
+                "user_id": {
+                    "type": "string",
+                    "required": True,
+                    "population": "Use user_id from Users tab; if absent, use email; if email absent, use username",
+                },
+                "group_id": {
+                    "type": "string",
+                    "required": True,
+                    "population": "Use group_id from Groups tab; if absent, use assigned number",
+                },
+            },
+        },
+        "Group_Groups": {
+            "required": True,
+            "fields": {
+                "parent_group_id": {
+                    "type": "string",
+                    "required": True,
+                    "population": "Use group_id from Groups tab; if absent, use assigned number",
+                },
+                "child_group_id": {
+                    "type": "string",
+                    "required": True,
+                    "population": "Use group_id from Groups tab; if absent, use assigned number",
+                },
+            },
+        },
+        "User_Roles": {
+            "required": True,
+            "fields": {
+                "user_id": {
+                    "type": "string",
+                    "required": True,
+                    "population": "Use user_id from Users tab; if absent, use email; if email absent, use username",
+                },
+                "role_id": {
+                    "type": "string",
+                    "required": True,
+                    "population": "Use role_id from Roles tab; if absent, use role_name",
+                },
+            },
+        },
+        "Group_Roles": {
+            "required": True,
+            "fields": {
+                "group_id": {
+                    "type": "string",
+                    "required": True,
+                    "population": "Use group_id from Groups tab; if absent, use assigned number",
+                },
+                "role_id": {
+                    "type": "string",
+                    "required": True,
+                    "population": "Use role_id from Roles tab; if absent, use role_name",
+                },
+            },
+        },
+    }
+
     def __init__(self):
         """Initialize SchemaValidator."""
-        self.required_sheets = {"Users", "Groups", "Group_Groups"}
-
-        self.optional_sheets = {"User_Groups", "Roles", "Role_Groups"}
-
-        self.schema = {
-            "Users": {
-                "required_fields": ["user_id", "username", "email"],
-                "field_types": {
-                    "user_id": str,
-                    "username": str,
-                    "email": str,
-                    "is_active": str,
-                    "created_at": datetime,
-                    "updated_at": datetime,
-                    "last_login_at": datetime,
-                },
-                "field_mappings": {"is_active": "enabled"},
-            },
-            "Groups": {
-                "required_fields": ["group_id", "group_name"],
-                "field_types": {
-                    "group_id": str,
-                    "group_name": str,
-                    "group_description": str,
-                },
-                "field_mappings": {"group_description": "description"},
-            },
-            "Group_Groups": {
-                "required_fields": ["source_group_id", "destination_group_id"],
-                "field_types": {"source_group_id": str, "destination_group_id": str},
-            },
-            "User_Groups": {
-                "required_fields": ["user_id", "group_id"],
-                "field_types": {"user_id": str, "group_id": str},
-            },
-            "Roles": {
-                "required_fields": ["role_id", "role_name"],
-                "field_types": {"role_id": str, "role_name": str, "description": str},
-            },
-            "Role_Groups": {
-                "required_fields": ["group_id", "role_id"],
-                "field_types": {"group_id": str, "role_id": str},
-            },
+        self.required_sheets = {
+            "Users",
+            "Groups",
+            "User_Groups",
+            "Group_Groups",
+            "Roles",
+            "User_Roles",
+            "Group_Roles",
         }
 
     def validate_sheets(self, sheets: Dict[str, DataFrame]) -> List[str]:
@@ -87,121 +209,260 @@ class SchemaValidator:
 
         # Validate each sheet
         for sheet_name, df in sheets.items():
-            if sheet_name in self.schema:
+            if sheet_name in self.SCHEMAS:
+                if not isinstance(df, pd.DataFrame):
+                    errors.append(f"Sheet '{sheet_name}' is not a DataFrame")
+                    continue
                 sheet_errors = self.validate_dataframe(df, sheet_name)
                 errors.extend(sheet_errors)
 
         # Validate relationships
-        relationship_errors = self.validate_relationships(sheets)
-        errors.extend(relationship_errors)
+        if all(
+            sheet in sheets
+            for sheet in ["Users", "Groups", "User_Groups", "Group_Groups"]
+        ):
+            if all(
+                isinstance(sheets[sheet], pd.DataFrame)
+                for sheet in ["Users", "Groups", "User_Groups", "Group_Groups"]
+            ):
+                relationship_errors = self.validate_relationships(
+                    users_df=sheets["Users"],
+                    groups_df=sheets["Groups"],
+                    user_groups_df=sheets["User_Groups"],
+                    group_groups_df=sheets["Group_Groups"],
+                )
+                errors.extend(relationship_errors)
 
         return errors
 
-    def validate_dataframe(self, df: DataFrame, sheet_name: str) -> List[str]:
-        """Validate a DataFrame against schema requirements.
-
-        Args:
-            df: DataFrame to validate
-            sheet_name: Name of the sheet being validated
-
-        Returns:
-            List[str]: List of validation error messages
-        """
+    def validate_dataframe(self, df: pd.DataFrame, schema: str) -> List[str]:
+        """Validate a DataFrame against its schema requirements."""
         errors = []
 
-        # Skip validation for empty optional sheets
-        if sheet_name in self.optional_sheets and df.empty:
+        if df.empty:
+            errors.append(f"DataFrame for {schema} is empty")
             return errors
 
-        # Check if sheet is required and empty
-        if sheet_name in self.required_sheets and df.empty:
-            errors.append(f"Required sheet {sheet_name} is empty")
-            return errors
+        if schema == "Users":
+            errors.extend(self._validate_users_schema(df))
+        elif schema == "Groups":
+            errors.extend(self._validate_groups_schema(df))
+        elif schema == "Roles":
+            errors.extend(self._validate_roles_schema(df))
+        elif schema == "User_Groups":
+            errors.extend(self._validate_user_groups_schema(df))
+        elif schema == "Group_Groups":
+            errors.extend(self._validate_group_groups_schema(df))
+        elif schema == "User_Roles":
+            errors.extend(self._validate_user_roles_schema(df))
+        elif schema == "Group_Roles":
+            errors.extend(self._validate_group_roles_schema(df))
+        else:
+            errors.append(f"Unknown schema: {schema}")
 
-        # Check if sheet is known
-        if sheet_name not in self.schema:
-            errors.append(f"Unknown sheet: {sheet_name}")
-            return errors
+        return errors
 
-        # Get schema for this sheet
-        sheet_schema = self.schema[sheet_name]
+    def _validate_users_schema(self, df: pd.DataFrame) -> List[str]:
+        """Validate Users schema."""
+        errors = []
 
-        # Create a copy of the DataFrame to avoid modifying the original
-        df = df.copy()
+        # Check for required fields
+        required_fields = ["enabled", "created_at", "updated_at", "last_login_at"]
+        for field in required_fields:
+            if field not in df.columns:
+                errors.append(f"Missing required field: {field}")
 
-        # Apply field mappings if any exist
-        if "field_mappings" in sheet_schema:
-            for source_field, target_field in sheet_schema["field_mappings"].items():
-                if source_field in df.columns:
-                    df[target_field] = df[source_field]
+        # Check for at least one identifier field
+        identifier_fields = ["user_id", "username", "email"]
+        has_identifier = any(field in df.columns for field in identifier_fields)
+        if not has_identifier:
+            errors.append("At least one of user_id, username, or email must be present")
 
-        # Check required fields
-        required_fields = sheet_schema.get("required_fields", [])
-        missing_fields = set(required_fields) - set(df.columns)
-        if missing_fields:
-            errors.append(f"Missing required fields: {missing_fields}")
+        # Check for name fields
+        if "full_name" not in df.columns and not (
+            "first_name" in df.columns and "last_name" in df.columns
+        ):
+            errors.append(
+                "Either full_name or both first_name and last_name must be present"
+            )
 
-        # Check field types
-        field_types = sheet_schema.get("field_types", {})
-        for field, expected_type in field_types.items():
+        # Validate datetime fields
+        datetime_fields = ["created_at", "updated_at", "last_login_at"]
+        for field in datetime_fields:
             if field in df.columns:
-                if expected_type == datetime:
-                    try:
-                        pd.to_datetime(df[field])
-                    except Exception as e:
-                        errors.append(f"Invalid datetime in field {field}: {e}")
-                else:
-                    if not all(
-                        isinstance(val, expected_type) for val in df[field].dropna()
-                    ):
+                try:
+                    # Try to parse the datetime string
+                    dates = pd.to_datetime(df[field])
+                    # Check if any date is missing timezone information
+                    if any(date.tzinfo is None for date in dates):
                         errors.append(
-                            f"Invalid type in field {field}, expected {expected_type.__name__}"
+                            f"Invalid datetime format in {field} - must be ISO 8601 with timezone"
                         )
+                except (ValueError, TypeError):
+                    errors.append(f"Invalid datetime format in {field}")
 
         return errors
 
-    def validate_relationships(self, sheets: Dict[str, DataFrame]) -> List[str]:
-        """Validate relationships between sheets.
-
-        Args:
-            sheets: Dictionary of sheet names to DataFrames
-
-        Returns:
-            List[str]: List of validation error messages
-        """
+    def _validate_groups_schema(self, df: pd.DataFrame) -> List[str]:
+        """Validate Groups schema."""
         errors = []
 
-        # Check required sheets
-        missing_sheets = self.required_sheets - set(sheets.keys())
-        if missing_sheets:
-            errors.append(f"Missing required sheets: {missing_sheets}")
-            return errors
+        # Check for at least one identifier
+        if not any(col in df.columns for col in ["group_id", "group_name"]):
+            errors.append("At least one of group_id or group_name must be present")
 
-        # Validate Group-Group relationships
-        if "Group_Groups" in sheets and "Groups" in sheets:
-            group_ids = set(sheets["Groups"]["group_id"])
-            for _, row in sheets["Group_Groups"].iterrows():
-                source_id = row["source_group_id"]
-                dest_id = row["destination_group_id"]
-                if source_id not in group_ids:
-                    errors.append(
-                        f"Invalid source_group_id in Group_Groups: {source_id}"
-                    )
-                if dest_id not in group_ids:
-                    errors.append(
-                        f"Invalid destination_group_id in Group_Groups: {dest_id}"
-                    )
-
-        # Validate User-Group relationships if present
-        if "User_Groups" in sheets and not sheets["User_Groups"].empty:
-            user_ids = set(sheets["Users"]["user_id"])
-            group_ids = set(sheets["Groups"]["group_id"])
-            for _, row in sheets["User_Groups"].iterrows():
-                user_id = row["user_id"]
-                group_id = row["group_id"]
-                if user_id not in user_ids:
-                    errors.append(f"Invalid user_id in User_Groups: {user_id}")
-                if group_id not in group_ids:
-                    errors.append(f"Invalid group_id in User_Groups: {group_id}")
+        # Check description when group_name is present
+        if "group_name" in df.columns and "description" not in df.columns:
+            errors.append("Description is required when group_name is present")
 
         return errors
+
+    def _validate_roles_schema(self, df: pd.DataFrame) -> List[str]:
+        """Validate Roles schema."""
+        errors = []
+
+        # Check for at least one identifier
+        if not any(col in df.columns for col in ["role_id", "role_name"]):
+            errors.append("At least one of role_id or role_name must be present")
+
+        # Check description
+        if "description" not in df.columns:
+            errors.append("Description is required for roles")
+
+        return errors
+
+    def _validate_user_groups_schema(self, df: pd.DataFrame) -> List[str]:
+        """Validate User_Groups schema."""
+        errors = []
+
+        required_cols = ["user_id", "group_id"]
+        for col in required_cols:
+            if col not in df.columns:
+                errors.append(f"Missing required column: {col}")
+            elif df[col].isnull().any():
+                errors.append(f"Column {col} contains null values")
+
+        return errors
+
+    def _validate_group_groups_schema(self, df: pd.DataFrame) -> List[str]:
+        """Validate Group_Groups schema."""
+        errors = []
+
+        required_cols = ["parent_group_id", "child_group_id"]
+        for col in required_cols:
+            if col not in df.columns:
+                errors.append(f"Missing required column: {col}")
+            elif df[col].isnull().any():
+                errors.append(f"Column {col} contains null values")
+
+        return errors
+
+    def _validate_user_roles_schema(self, df: pd.DataFrame) -> List[str]:
+        """Validate User_Roles schema."""
+        errors = []
+
+        required_cols = ["user_id", "role_id"]
+        for col in required_cols:
+            if col not in df.columns:
+                errors.append(f"Missing required column: {col}")
+            elif df[col].isnull().any():
+                errors.append(f"Column {col} contains null values")
+
+        return errors
+
+    def _validate_group_roles_schema(self, df: pd.DataFrame) -> List[str]:
+        """Validate Group_Roles schema."""
+        errors = []
+
+        required_cols = ["group_id", "role_id"]
+        for col in required_cols:
+            if col not in df.columns:
+                errors.append(f"Missing required column: {col}")
+            elif df[col].isnull().any():
+                errors.append(f"Column {col} contains null values")
+
+        return errors
+
+    def validate_relationships(
+        self,
+        users_df: pd.DataFrame,
+        groups_df: pd.DataFrame,
+        user_groups_df: pd.DataFrame,
+        group_groups_df: pd.DataFrame,
+    ) -> List[str]:
+        """Validate relationships between entities."""
+        errors = []
+
+        # Validate user references
+        if "user_id" in user_groups_df.columns:
+            invalid_users = set(user_groups_df["user_id"]) - set(users_df["user_id"])
+            if invalid_users:
+                errors.append(f"Invalid user_ids in User_Groups: {invalid_users}")
+
+        # Validate group references
+        if "group_id" in user_groups_df.columns:
+            invalid_groups = set(user_groups_df["group_id"]) - set(
+                groups_df["group_id"]
+            )
+            if invalid_groups:
+                errors.append(f"Invalid group_ids in User_Groups: {invalid_groups}")
+
+        # Validate parent-child group relationships
+        if not group_groups_df.empty:
+            parent_groups = set(group_groups_df["parent_group_id"])
+            child_groups = set(group_groups_df["child_group_id"])
+            all_groups = set(groups_df["group_id"])
+
+            invalid_parents = parent_groups - all_groups
+            if invalid_parents:
+                errors.append(f"Invalid parent_group_ids: {invalid_parents}")
+
+            invalid_children = child_groups - all_groups
+            if invalid_children:
+                errors.append(f"Invalid child_group_ids: {invalid_children}")
+
+            # Check for circular references
+            if self._has_circular_references(group_groups_df):
+                errors.append("Circular reference detected in group relationships")
+
+        return errors
+
+    def _has_circular_references(self, group_groups_df: pd.DataFrame) -> bool:
+        """Check for circular references in group relationships."""
+        if group_groups_df.empty:
+            return False
+
+        # Build adjacency list
+        graph: Dict[str, Set[str]] = {}
+        for _, row in group_groups_df.iterrows():
+            parent = row["parent_group_id"]
+            child = row["child_group_id"]
+            if parent not in graph:
+                graph[parent] = set()
+            graph[parent].add(child)
+
+        # Helper function for DFS
+        def has_cycle(node: str, visited: Set[str], path: Set[str]) -> bool:
+            visited.add(node)
+            path.add(node)
+
+            if node in graph:
+                for neighbor in graph[node]:
+                    if neighbor not in visited:
+                        if has_cycle(neighbor, visited, path):
+                            return True
+                    elif neighbor in path:
+                        return True
+
+            path.remove(node)
+            return False
+
+        # Check each node for cycles
+        visited: Set[str] = set()
+        path: Set[str] = set()
+        for node in graph:
+            if node not in visited:
+                if has_cycle(node, visited, path):
+                    return True
+
+        return False

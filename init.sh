@@ -243,7 +243,7 @@ if [ "$CONVERT_MODE" = true ]; then
         echo "Please place your AD export files in the 'input' directory."
         exit 1
     fi
-    python convert_ad_data.py
+    python src/AD_oracle.py --input input/*.xlsx --output output/processed_AD_data.xlsx --builtin-groups src/builtin_groups.json
     if [ $? -eq 0 ]; then
         echo "✅ Conversion completed successfully!"
         echo "Check the 'output' directory for processed files."

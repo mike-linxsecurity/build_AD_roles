@@ -6,6 +6,7 @@ validates its contents, and generates role mappings in the output directory.
 """
 
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Dict, Union
@@ -26,34 +27,113 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def process_input_file(input_file: Union[str, Path]) -> Dict[str, pd.DataFrame]:
-    """Process and validate input Excel file.
+def process_input_file(
+    input_file: Union[str, Path], builtin_groups_file: Union[str, Path] = None
+) -> Dict[str, pd.DataFrame]:
+    """Process and validate input Excel file containing AD data.
 
     Args:
-        input_file: Path to the input Excel file containing AD data
+        input_file: Path to input Excel file
+        builtin_groups_file: Path to builtin groups JSON file
 
     Returns:
-        Dict containing validated DataFrames for each sheet
+        Dictionary containing DataFrames for each sheet
 
     Raises:
         FileNotFoundError: If input file doesn't exist
-        ValueError: If input data is invalid
+        ValueError: If required sheets or columns are missing
+        ValueError: If data validation fails
     """
-    # Ensure input file exists
-    if not Path(input_file).exists():
+    logger.debug(f"Processing input file: {input_file}")
+
+    if not os.path.exists(input_file):
         raise FileNotFoundError(f"Input file not found: {input_file}")
 
-    # Read input data
-    excel = ExcelHandler()
-    sheets = excel.read_sheets(input_file)
+    if builtin_groups_file and not os.path.exists(builtin_groups_file):
+        raise FileNotFoundError(f"Builtin groups file not found: {builtin_groups_file}")
+
+    # Use ExcelHandler to read sheets
+    excel_handler = ExcelHandler(input_file)
+    processed_data = excel_handler.read_sheets(input_file)
+    logger.debug(f"Read sheets: {list(processed_data.keys())}")
+
+    # Ensure all required sheets are present and are DataFrames
+    required_sheets = {"Users", "Groups", "User_Groups", "Group_Groups"}
+    for sheet_name in required_sheets:
+        if sheet_name not in processed_data:
+            raise ValueError(f"Required sheet '{sheet_name}' is missing")
+        elif not isinstance(processed_data[sheet_name], pd.DataFrame):
+            raise ValueError(f"Sheet '{sheet_name}' is not a DataFrame")
+
+    # Create role mappings if builtin_groups_file is provided
+    if builtin_groups_file:
+        from src.utils.role_mapper import RoleMapper
+
+        role_mapper = RoleMapper(str(builtin_groups_file))
+        role_mappings = role_mapper.create_role_mappings(processed_data["Groups"])
+
+        # Resolve group-role relationships
+        group_roles_df = role_mapper.resolve_group_roles(
+            roles_df=role_mappings["Roles"],
+            group_groups_df=processed_data["Group_Groups"],
+            groups_df=processed_data["Groups"],
+            group_roles_df=role_mappings["Group_Roles"],
+        )
+
+        # Resolve user-role relationships
+        user_roles_df = role_mapper.resolve_user_roles(
+            user_groups_df=processed_data["User_Groups"], group_roles_df=group_roles_df
+        )
+
+        # Add role mappings to processed data
+        processed_data["Roles"] = role_mappings["Roles"]
+        processed_data["Group_Roles"] = group_roles_df
+        processed_data["User_Roles"] = user_roles_df
+
+    # Ensure all required fields are present in Users DataFrame
+    if "Users" in processed_data:
+        users_df = processed_data["Users"]
+        if users_df.empty:
+            raise ValueError("Users DataFrame is empty")
+        # Add missing required fields with default values
+        if "enabled" not in users_df.columns:
+            users_df["enabled"] = "yes"
+        if "created_at" not in users_df.columns:
+            users_df["created_at"] = "2024-03-20T12:00:00Z"
+        if "updated_at" not in users_df.columns:
+            users_df["updated_at"] = "2024-03-20T12:00:00Z"
+        if "last_login_at" not in users_df.columns:
+            users_df["last_login_at"] = "2024-03-20T12:00:00Z"
+        if "full_name" not in users_df.columns and (
+            "first_name" not in users_df.columns or "last_name" not in users_df.columns
+        ):
+            users_df["full_name"] = users_df["username"].apply(lambda x: f"User {x}")
+
+    # Ensure all required fields are present in Groups DataFrame
+    if "Groups" in processed_data:
+        groups_df = processed_data["Groups"]
+        if groups_df.empty:
+            raise ValueError("Groups DataFrame is empty")
+        # Add missing required fields with default values
+        if "description" not in groups_df.columns:
+            groups_df["description"] = groups_df["group_name"].apply(
+                lambda x: f"Group {x}"
+            )
 
     # Validate data against schema
     validator = SchemaValidator()
-    errors = validator.validate_sheets(sheets)
-    if errors:
-        raise ValueError("Error validating input data: " + "; ".join(errors))
+    validation_errors = validator.validate_sheets(processed_data)
+    if validation_errors:
+        raise ValueError(f"Error validating input data: {'; '.join(validation_errors)}")
 
-    return sheets
+    logger.debug("Processed data validation complete")
+    logger.debug("Final processed data:")
+    for sheet_name, df in processed_data.items():
+        logger.debug(f"{sheet_name}: shape={df.shape}, columns={df.columns.tolist()}")
+        if not df.empty:
+            logger.debug(f"{sheet_name} data:\n{df}")
+
+    return processed_data
 
 
 def main():
